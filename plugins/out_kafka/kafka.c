@@ -129,12 +129,6 @@ int produce_message(struct flb_time *tm, msgpack_object *map,
 #define AVRO_FREE(X, Y) if (!X) { flb_free(Y); }
 #endif
 
-    // this is just to keep the code cleaner
-    // the avro encoding includes
-    // an embedded schemaid which is used
-    // the embedding is a null byte
-    // followed by a 16 byte schemaid
-#define AVRO_SCHEMA_OVERHEAD 16 + 1
 #endif
 
     flb_debug("in produce_message\n");
@@ -308,7 +302,8 @@ int produce_message(struct flb_time *tm, msgpack_object *map,
         out_buf = avro_buff;
         out_size = AVRO_DEFAULT_BUFFER_SIZE;
 
-	if (mp_sbuf.size + AVRO_SCHEMA_OVERHEAD >= AVRO_DEFAULT_BUFFER_SIZE) {
+        int schema_overhead = strlen(ctx->avro_fields.prefix)/2 + strlen(ctx->avro_fields.schema_id)/2;
+	if (mp_sbuf.size + schema_overhead >= AVRO_DEFAULT_BUFFER_SIZE) {
             flb_plg_info(ctx->ins, "upsizing to dynamic buffer AVRO:len:%zu:schemaID:%s:\n", (size_t)mp_sbuf.size, ctx->avro_fields.schema_id);
             avro_fast_buffer = false;
             // avro will always be  smaller than msgpack
@@ -316,7 +311,7 @@ int produce_message(struct flb_time *tm, msgpack_object *map,
             // all the metadata is in the schema which is not part of the msg
             // add schemaid + magic byte for safety buffer and allocate
             // that's 16 byte schemaid and one byte magic byte
-            out_size = mp_sbuf.size + AVRO_SCHEMA_OVERHEAD;
+            out_size = mp_sbuf.size + schema_overhead;
             out_buf = flb_malloc(out_size);
             if (!out_buf) {
                 flb_plg_error(ctx->ins, "error allocating memory for decoding to AVRO:schema:%s:schemaID:%s:\n", ctx->avro_fields.schema_str, ctx->avro_fields.schema_id);
@@ -579,6 +574,20 @@ static struct flb_config_map config_map[] = {
     FLB_CONFIG_MAP_STR, "schema_id", (char *)NULL,
     0, FLB_FALSE, 0,
     "Set AVRO schema ID."
+   },
+   {
+    FLB_CONFIG_MAP_STR, "avro_prefix", "00",
+    0, FLB_TRUE,
+    offsetof(struct flb_out_kafka, avro_fields)
+    + offsetof(struct flb_avro_fields, prefix),
+    "Set AVRO message prefix (hex)."
+   },
+   {
+    FLB_CONFIG_MAP_BOOL, "avro_null_terminated", "true",
+    0, FLB_TRUE,
+    offsetof(struct flb_out_kafka, avro_fields)
+    + offsetof(struct flb_avro_fields, null_terminated),
+    "Terminate AVRO message with 0x0."
    },
 #endif
    {

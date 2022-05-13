@@ -261,6 +261,24 @@ int flb_msgpack_to_avro(avro_value_t *val, msgpack_object *o)
     return ret;
 }
 
+/**
+ * @brief Write the given hexadecimal string to the avro writer
+ * 
+ * @param awriter avro writer
+ * @param hex_string hexadecimal, null-terminated string
+ * @return int response from avro_write
+ */
+int avro_hex_write(avro_writer_t awriter, const char* hex_string) {
+    const char *pos = hex_string;
+    size_t val_len = strlen(hex_string)/2;
+    unsigned char val[val_len];
+    for (size_t count = 0; count < val_len; count++) {
+            sscanf(pos, "%2hhx", &val[count]);
+            pos += 2;
+    }
+    return avro_write(awriter, val, val_len);
+}
+
 bool flb_msgpack_raw_to_avro_sds(const void *in_buf, size_t in_size, struct flb_avro_fields *ctx, char *out_buff, size_t *out_size)
 {
     msgpack_unpacked result;
@@ -323,15 +341,11 @@ bool flb_msgpack_raw_to_avro_sds(const void *in_buf, size_t in_size, struct flb_
         return false;
     }
 
-    // write the magic byte stuff
-    //  write one bye of \0
-    //  this is followed by
-    //  16 bytes of the schemaid where the schemaid is in hex
-    //  in this implementation the schemaid is the md5hash of the avro schema
+    // write the magic prefix
     int rval;
-    rval = avro_write(awriter, "\0", 1);
+    rval = avro_hex_write(awriter, ctx->prefix);
     if (rval != 0) {
-        flb_error("Unable to write magic byte\n");
+        flb_error("Unable to write prefix\n");
         avro_writer_free(awriter);
         avro_value_decref(&aobject);
         avro_value_iface_decref(aclass);
@@ -341,18 +355,7 @@ bool flb_msgpack_raw_to_avro_sds(const void *in_buf, size_t in_size, struct flb_
     }
 
     // write the schemaid
-    // its md5hash of the avro schema
-    // it looks like this c4b52aaf22429c7f9eb8c30270bc1795
-    const char *pos = ctx->schema_id;
-    unsigned char val[16];
-    size_t count;
-    for (count = 0; count < sizeof val/sizeof *val; count++) {
-            sscanf(pos, "%2hhx", &val[count]);
-            pos += 2;
-    }
-    
-    // write it into a buffer which can be passed to librdkafka
-    rval = avro_write(awriter, val, 16);
+    rval = avro_hex_write(awriter, ctx->schema_id);
     if (rval != 0) {
         flb_error("Unable to write schemaid\n");
         avro_writer_free(awriter);
@@ -374,7 +377,9 @@ bool flb_msgpack_raw_to_avro_sds(const void *in_buf, size_t in_size, struct flb_
     }
 
     // null terminate it
+    if (ctx->null_terminated) {
     avro_write(awriter, "\0", 1);
+    }
 
     flb_debug("before avro_writer_flush\n");
 

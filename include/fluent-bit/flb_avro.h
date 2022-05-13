@@ -33,6 +33,8 @@
 struct flb_avro_fields {
     flb_sds_t schema_id;
     flb_sds_t schema_str;
+    flb_sds_t prefix;
+    int       null_terminated; /* FLB_TRUE or FLB_FALSE */
 };
 
 void *flb_avro_allocator(void *ud, void *ptr, size_t osize, size_t nsize);
